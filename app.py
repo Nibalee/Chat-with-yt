@@ -4,6 +4,9 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGener
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import YoutubeLoader
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains import create_retrieval_chain
+from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 import os
 
@@ -62,6 +65,28 @@ def get_vectore_store_from_transcript(transcript):
     vectorestore = Chroma.from_documents(documents=splits, embedding = google_embeddings) 
     return vectorestore
 
+def get_retriever_chain():
+    # prompt 
+    prompt = ChatPromptTemplate.from_template(
+        """As an Youtube expert who has in depth knowledge on the transcript of a specific video, answer the following question based only the provided context:
+        <context>
+        {context}
+        </context>
+
+        Question: {input}""")
+    
+    llm = ChatGoogleGenerativeAI(model="gemini-pro")
+    # document chain 
+    document_chain = create_stuff_documents_chain(llm, prompt)
+
+    return document_chain
+
+def get_retrieval_chain(vector_store, document_chain):
+    retriever = vector_store.as_retriever()
+    retrieval_chain = create_retrieval_chain(retriever, document_chain)
+    return retrieval_chain
+    
+
 def main():
     st.set_page_config(page_title="Chat with YT", page_icon="▶️")
     st.title("Chat With YT")
@@ -80,15 +105,31 @@ def main():
         if "chat-history" not in st.session_state:
             st.session_state.chat_history = []
 
+        # User query
+        user_query = st.chat_input("Say something") 
+        
         # Transcript
         transcript = get_transcript_from_url(youtube_url)
         st.subheader(f"Video: {transcript[0].metadata['title']}")
 
         # vectore store
-        vectore_store = get_vectore_store_from_transcript(transcript)
+        vector_store = get_vectore_store_from_transcript(transcript)
         
-        # User query
-        user_query = st.chat_input("Say something")   
+        #retriever chain
+        retriever = get_retriever_chain()
+
+        #retrieval chain
+        retrieval_chain = get_retrieval_chain(vector_store, retriever)
+
+        #response
+        if user_query is not None and user_query!="":
+          with st.chat_message("user"):
+              st.write(user_query)
+          response = retrieval_chain.invoke({
+              "input": user_query,
+          })
+          with st.chat_message("ai"):
+            st.write(response["answer"])
             
 if __name__ == "__main__":
     main()
