@@ -75,7 +75,8 @@ def get_retriever_chain():
 
         Question: {input}""")
     
-    llm = ChatGoogleGenerativeAI(model="gemini-pro")
+    llm = ChatGoogleGenerativeAI(model="gemini-pro", temperature = 0.7)
+
     # document chain 
     document_chain = create_stuff_documents_chain(llm, prompt)
 
